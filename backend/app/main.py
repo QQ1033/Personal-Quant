@@ -18,7 +18,7 @@ from app.api.companies import router as companies_router
 from app.api.internal_jobs import router as internal_jobs_router
 from app.api.macro import router as macro_router
 from app.api.watchlist import router as watchlist_router
-from app.core.config import APP_SCHEMA, auth_env_ready
+from app.core.config import APP_SCHEMA, ai_explanations_enabled, auth_env_ready
 from app.database import engine
 from app.scheduler import start_scheduler, stop_scheduler
 
@@ -119,4 +119,5 @@ def health():
         "schema": APP_SCHEMA,
         "tables": sorted(found),
         "auth_configured": auth_env_ready(),
+        "ai_explanations": ai_explanations_enabled(),
     }

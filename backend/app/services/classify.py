@@ -130,6 +130,66 @@ _RULES: list[tuple[str, tuple[str, ...]]] = [
     ),
 ]
 
+# Terms the frontend has pop-up definitions for (frontend/src/lib/terms.ts).
+GLOSSARY_TERMS: tuple[str, ...] = (
+    "earnings",
+    "revenue",
+    "guidance",
+    "partnership",
+    "acquisition",
+    "merger",
+    "product launch",
+    "market share",
+    "regulation",
+    "inflation",
+    "CPI",
+    "interest rates",
+    "Federal Reserve",
+    "ticker",
+)
+
+# Fallback explanations when AI explanations are off or a call fails.
+_CATEGORY_WHY: dict[str, str] = {
+    "earnings": (
+        "Earnings reports are one of the main ways the public learns how {ticker} is really doing: "
+        "how much it sold, what it spent and what it kept. People also listen for what the company "
+        "expects next."
+    ),
+    "partnerships": (
+        "A partnership can give {ticker} access to new customers, technology or supplies without "
+        "buying another company. What it's worth usually depends on the details and how long it takes "
+        "to show up in results."
+    ),
+    "acquisitions": (
+        "Buying or merging with another company can quickly change what {ticker} does and how it makes "
+        "money. Big deals can also take a long time to finish and may need approval from regulators."
+    ),
+    "product_innovation": (
+        "New products are how a company like {ticker} tries to keep customers and find new ones. "
+        "An announcement shows the plan, but sales over time show whether people actually want it."
+    ),
+    "competition": (
+        "Stories about rivals can show where {ticker} is ahead or behind. Competition affects how much "
+        "a company can charge and how much it has to spend to keep its customers."
+    ),
+    "government_policy": (
+        "New rules and government decisions can change what {ticker} is allowed to do or what it costs "
+        "to operate, sometimes for its whole industry at once."
+    ),
+    "inflation": (
+        "Inflation affects both what {ticker} pays for supplies and how much its customers can afford "
+        "to spend, which is why companies and investors watch it closely."
+    ),
+    "interest_rates": (
+        "Interest rates change how much it costs {ticker} and its customers to borrow money. They also "
+        "affect how investors value profits expected years from now."
+    ),
+    "other": (
+        "This story mentions {ticker}, but it may be about the wider market rather than the company "
+        "itself. Reading the source is the best way to see how closely it connects."
+    ),
+}
+
 _CATEGORY_TERMS: dict[str, list[str]] = {
     "earnings": ["earnings", "revenue", "guidance"],
     "partnerships": ["partnership", "collaboration"],
@@ -201,6 +261,10 @@ def classify_headline(title: str, summary: str | None = None) -> tuple[str, floa
                 confidence = min(0.9, 0.55 + 0.05 * len(kw.split()))
                 return category, confidence
     return "other", 0.35
+
+
+def why_it_matters_for(category: str, ticker: str) -> str:
+    return _CATEGORY_WHY.get(category, _CATEGORY_WHY["other"]).format(ticker=ticker)
 
 
 def beginner_terms_for(category: str) -> list[str]:

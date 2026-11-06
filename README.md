@@ -1,142 +1,128 @@
 # Investory
 
-Personalized AI financial news and education for beginner investors (college students first).
+**Understand the news behind the companies you follow.**
 
-Repo name: **Personal-Quant**. Product name: **Investory**.
+Investory helps college students and other beginner investors keep up with the companies they care about. You build a watchlist, and each day you get a short briefing that explains what happened, why it may matter and what's still unknown, in plain English and with links to the original sources.
 
-This app helps users follow companies on a watchlist and understand relevant company and macro developments through beginner-friendly, source-linked daily briefings. It does **not** predict prices or give buy/sell advice.
+Investory is an education tool. It never predicts prices or gives buy, sell or hold advice.
 
-## Workspace
+![The daily briefing](docs/screenshots/briefing.jpg)
 
-| Tool | Job |
-|------|-----|
-| Notion | Product requirements, architecture, ADRs, research, weekly notes |
-| GitHub | Code, branches, commits, push, optional PRs |
-| Cursor + Notion MCP | Implementation with docs context |
+*Screenshots show sample stories, not real news.*
 
-Details: [docs/SOURCE_OF_TRUTH.md](docs/SOURCE_OF_TRUTH.md) · Agent guide: [AGENTS.md](AGENTS.md) · Notion paste kits: [docs/notion/](docs/notion/) · Target layout: [docs/REPO_STRUCTURE.md](docs/REPO_STRUCTURE.md)
+## Features
 
-## Monorepo layout
+- **Daily briefing:** one short story card per update, with what happened, why it may matter, how the bigger picture connects and what's uncertain.
+- **AI explanations:** Claude rewrites headlines for beginners. Without an API key, the app uses built-in text for each news category instead.
+- **Term pop-ups:** tap a financial term for a simple definition and an example.
+- **Watchlist:** search for companies and follow or remove them.
+- **Company pages:** today's stories, recent news, SEC filings and related economic themes in one place.
+- **Built-in guardrails:** the AI is told not to predict prices or give advice, and a safety check also strips advice-like phrases from what it writes.
+
+| Log in | Term pop-up |
+|---|---|
+| ![Login page](docs/screenshots/login.jpg) | ![Term pop-up](docs/screenshots/term-popup.jpg) |
+
+| Watchlist | Company page |
+|---|---|
+| ![Watchlist](docs/screenshots/watchlist.jpg) | ![Company page](docs/screenshots/company.jpg) |
+
+## How it works
 
 ```
-backend/     FastAPI + SQLAlchemy → Supabase Postgres
-frontend/    Vite + React + TypeScript
-docs/        Source-of-truth notes + Notion templates
+Yahoo Finance + Google News feeds, SEC filings
+        │
+        ▼
+FastAPI backend ── classifies stories, removes duplicates
+        │          asks Claude for beginner explanations
+        │          checks the text for advice language
+        ▼
+Supabase (Postgres + login) ◄──► React frontend
 ```
 
-## Prerequisites
+| Layer | Tools |
+|---|---|
+| Frontend | React, TypeScript, Vite |
+| Backend | Python, FastAPI, SQLAlchemy |
+| Database and login | Supabase |
+| AI | Claude, through the official Anthropic SDK |
 
-- Python 3.14+ (backend)
-- Node.js 20+ (frontend, when scaffolded)
-- Supabase project (session pooler connection)
+## Run it locally
 
-## Backend setup
+You'll need Python 3.13, Node.js 22.12 or newer, and a free [Supabase](https://supabase.com) project.
+
+### 1. Backend
 
 ```powershell
 cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-# or, if using the lockfile after a known-good install:
-# pip install -r requirements-lock.txt
+copy .env.example .env
 ```
 
-Create `backend/.env` (never commit):
-
-```env
-user=postgres.<project-ref>
-password=<your-db-password>
-host=aws-1-<region>.pooler.supabase.com
-port=5432
-dbname=postgres
-```
-
-Password special characters are URL-encoded in code. Use session pooler port `5432` with SQLAlchemy `NullPool`.
-
-### Apply Week 1 schema (once)
-
-Tables live in Postgres schema **`investory`** (same DB / same pooler URL — no `.env` change).
-
-1. Supabase Dashboard → **SQL Editor** → run [`001_core_tables.sql`](backend/db/migrations/001_core_tables.sql)
-2. Or: `python db\apply_migrations.py` from `backend/` (see [`backend/db/README.md`](backend/db/README.md))
-
-Creates `investory.users`, `investory.companies`, `investory.watchlist_items`.
-
-### Auth (Supabase)
-
-1. Follow [docs/AUTH_SETUP.md](docs/AUTH_SETUP.md) (enable Email provider, copy API keys into `backend/.env`).
-2. Apply [`002_auth_users_link.sql`](backend/db/migrations/002_auth_users_link.sql) (or `python db\apply_migrations.py`).
-3. Sign up a user in Supabase Auth, get an access token, then call `GET /auth/me` with `Authorization: Bearer <token>`.
-
-See [backend/.env.example](backend/.env.example) for required keys. Pooler DB URL does **not** change for Auth.
-
-Run the API:
+Fill in `backend/.env` with your Supabase details. See [docs/AUTH_SETUP.md](docs/AUTH_SETUP.md) for where to find them. Then create the tables and start the API:
 
 ```powershell
-cd backend
-.\.venv\Scripts\Activate.ps1
+$env:PYTHONPATH = (Get-Location).Path
+python db\apply_migrations.py
 uvicorn app.main:app --reload
 ```
 
-- Home: [http://127.0.0.1:8000/](http://127.0.0.1:8000/)
-- Health (DB + tables): [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health)
-- Docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+Check http://127.0.0.1:8000/health. It should report `"status": "ok"`.
 
-### Daily news scrape (automatic digests)
-
-News is pulled from public feeds (Yahoo RSS + Yahoo search JSON, Google News RSS fallback)—not HTML page scraping—then stored in `investory.articles` and turned into digests.
-
-Set in `backend/.env`:
-
-```env
-INTERNAL_JOB_SECRET=...
-ENABLE_DAILY_SCHEDULER=true
-DAILY_INGEST_HOUR_UTC=13
-```
-
-Ways to run:
-
-```powershell
-# one-shot
-cd backend
-$env:PYTHONPATH = (Get-Location).Path
-python -m app.jobs.daily_ingest
-```
-
-- While `uvicorn` is running with `ENABLE_DAILY_SCHEDULER=true`, a background thread runs the scrape once per day at `DAILY_INGEST_HOUR_UTC`.
-- Cron / Railway: `POST /internal/jobs/daily-ingest` (or `/internal/jobs/news-scrape`) with header `X-Job-Secret: <secret>`.
-
-The UI reads saved digests (watchlist ticker cards → company hub).
-
-## Frontend setup
+### 2. Frontend
 
 ```powershell
 cd frontend
 npm install
-# create frontend/.env from .env.example
+copy .env.example .env
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173). Sign in with Supabase; the app calls FastAPI `GET /auth/me`.
+Fill in `frontend/.env`, then open http://localhost:5173 and create an account.
 
-See [frontend/README.md](frontend/README.md).
+### 3. Turn on AI explanations (optional)
 
-## Development workflow
+Add an [Anthropic API key](https://platform.claude.com/settings/keys) to `backend/.env` and restart the API:
 
-1. Spec and weekly goals live in Notion.
-2. Create a branch from `Main`: `feat/short-name`.
-3. Commit and push as you go.
-4. Open a PR when you want a clean merge history (optional); merge to `Main`.
+```env
+ANTHROPIC_API_KEY=your-key-here
+```
 
-## Six-week MVP (summary)
+`/health` will then report `"ai_explanations": true`. Each new story uses one API call, and repeated stories are cached while the server is running.
 
-1. Foundation: schema, Auth, Vite React shell  
-2. Watchlist: company search + CRUD  
-3. News ingest + classification  
-4. Daily briefing + sources  
-5. Beginner explanations + category filters  
-6. Deploy (Vercel + Railway) + demo polish  
+### Daily news
 
-## License / disclaimer
+With `ENABLE_DAILY_SCHEDULER=true`, the API refreshes briefings once a day while it's running, at the hour set by `DAILY_INGEST_HOUR_UTC`. You can also click **Build today's briefing** in the app, or have a scheduled job call `POST /internal/jobs/daily-ingest` with an `X-Job-Secret` header.
 
-Educational project. Not financial advice.
+### Tests
+
+```powershell
+cd backend
+python -m unittest discover tests
+```
+
+## Project layout
+
+```
+backend/    FastAPI app, database migrations and tests
+frontend/   React app
+docs/       API contract, login setup and screenshots
+```
+
+The full list of API routes is in [docs/API_CONTRACT.md](docs/API_CONTRACT.md).
+
+## Current limits
+
+- Company search covers 12 starter companies, listed in [`003_seed_companies.sql`](backend/db/migrations/003_seed_companies.sql).
+- There's no stock price data, by design for now.
+- It runs locally and hasn't been deployed yet.
+
+## Credits
+
+Started by Ethan Tandio and Aiden Loza in Builder Cohort 6. Ethan built the backend and data pipeline. Aiden designed the interface and finished the project.
+
+## Disclaimer
+
+For education only. This is not financial advice.

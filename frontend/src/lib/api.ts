@@ -136,3 +136,6 @@ export const removeFromWatchlist = (token: string, itemId: string) =>
 
 export const getTodayBriefing = (token: string) =>
   apiFetch<Briefing>('/briefings/today', token)
+
+export const generateBriefing = (token: string) =>
+  apiFetch<Briefing>('/briefings/generate', token, { method: 'POST' })

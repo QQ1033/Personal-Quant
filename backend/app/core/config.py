@@ -58,6 +58,11 @@ except ValueError:
     DAILY_INGEST_HOUR_UTC = 13
 
 
+def ai_explanations_enabled() -> bool:
+    """True when briefings can use Claude. Without a key they use category templates."""
+    return bool(os.getenv("ANTHROPIC_API_KEY"))
+
+
 def auth_env_ready() -> bool:
     """True when FastAPI can verify user tokens via Supabase Auth /user."""
     return bool(SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY)

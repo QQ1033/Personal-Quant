@@ -33,7 +33,7 @@ function AppRoutes() {
           </Protected>
         }
       >
-        <Route index element={<Navigate to="/watchlist" replace />} />
+        <Route index element={<Navigate to="/briefing" replace />} />
         <Route path="watchlist" element={<WatchlistPage />} />
         <Route path="briefing" element={<BriefingPage />} />
         <Route path="companies/:ticker" element={<CompanyHubPage />} />

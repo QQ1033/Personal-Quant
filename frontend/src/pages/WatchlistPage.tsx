@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import {
@@ -10,49 +10,86 @@ import {
   type WatchlistItem,
 } from '../lib/api'
 
+type CompanyRowProps = {
+  company: Company
+  following: boolean
+  detail: string
+  action: ReactNode
+}
+
+function CompanyRow({ company, following, detail, action }: CompanyRowProps) {
+  return (
+    <div className="company-row">
+      <span className={following ? 'ticker ticker--following' : 'ticker'}>{company.ticker}</span>
+      <div className="company-info">
+        {following ? (
+          <Link className="company-name company-link" to={`/companies/${company.ticker}`}>
+            {company.name}
+          </Link>
+        ) : (
+          <span className="company-name">{company.name}</span>
+        )}
+        <span className="muted small">{detail}</span>
+      </div>
+      {action}
+    </div>
+  )
+}
+
+const POPULAR = ['Apple', 'Nvidia', 'Microsoft', 'Tesla', 'Amazon']
+
+function updatesLabel(count: number) {
+  if (count === 0) return 'No updates yet today'
+  return count === 1 ? '1 update today' : `${count} updates today`
+}
+
 export function WatchlistPage() {
   const { accessToken } = useAuth()
   const [items, setItems] = useState<WatchlistItem[]>([])
+  const [loaded, setLoaded] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Company[]>([])
+  const [searchedFor, setSearchedFor] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-
-  async function refresh(token: string) {
-    const data = await listWatchlist(token)
-    setItems(data)
-  }
+  const q = query.trim()
 
   useEffect(() => {
     if (!accessToken) return
-    void refresh(accessToken).catch((err) =>
-      setError(err instanceof Error ? err.message : 'Failed to load watchlist'),
-    )
+    void listWatchlist(accessToken)
+      .then(setItems)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load watchlist'))
+      .finally(() => setLoaded(true))
   }, [accessToken])
 
-  async function onSearch(event: FormEvent) {
-    event.preventDefault()
-    if (!accessToken || !query.trim()) return
-    setBusy(true)
-    setError(null)
-    try {
-      const found = await searchCompanies(accessToken, query.trim())
-      setResults(found)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Search failed')
-    } finally {
-      setBusy(false)
+  // Search as you type, waiting for a short pause so each keystroke isn't a request.
+  useEffect(() => {
+    if (!accessToken || !q) return
+    let cancelled = false
+    const timer = setTimeout(() => {
+      void searchCompanies(accessToken, q)
+        .then((found) => {
+          if (cancelled) return
+          setResults(found)
+          setSearchedFor(q)
+        })
+        .catch((err) => {
+          if (!cancelled) setError(err instanceof Error ? err.message : 'Search failed')
+        })
+    }, 250)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
     }
-  }
+  }, [accessToken, q])
 
-  async function onAdd(company: Company) {
+  async function onFollow(company: Company) {
     if (!accessToken) return
     setBusy(true)
     setError(null)
     try {
       await addToWatchlist(accessToken, { company_id: company.id })
-      await refresh(accessToken)
-      setResults((prev) => prev.filter((c) => c.id !== company.id))
+      setItems(await listWatchlist(accessToken))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add company')
     } finally {
@@ -74,92 +111,119 @@ export function WatchlistPage() {
     }
   }
 
-  const lastRefresh = items.find((i) => i.last_briefing_at)?.last_briefing_at
+  const lower = q.toLowerCase()
+  const following = items.filter(
+    ({ company }) => !q || company.name.toLowerCase().includes(lower) || company.ticker.toLowerCase().includes(lower),
+  )
+  const suggestions = results.filter((company) => !items.some((item) => item.company.id === company.id))
 
   return (
-    <main className="page wide">
-      <header className="header">
-        <div>
-          <h1>Watchlist</h1>
-          <p className="muted">
-            Open a company card for today’s news, filings, and macro context. Digests
-            refresh daily — no manual generate step.
-          </p>
-          {lastRefresh && (
-            <p className="muted tiny">Last digest refresh: {new Date(lastRefresh).toLocaleString()}</p>
-          )}
-        </div>
-      </header>
+    <main className="page">
+      <div className="stack-sm">
+        <h1 className="page-title">Watchlist</h1>
+        <p className="muted lead">Follow companies to get them in your daily briefing.</p>
+      </div>
 
-      <form className="card form row" onSubmit={(e) => void onSearch(e)}>
-        <label className="grow">
-          Search ticker or name
+      <div className="field">
+        <label htmlFor="search">Search companies</label>
+        <div className="search">
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
+            <path d="M20 20l-4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
           <input
+            id="search"
+            type="search"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="AAPL or Apple"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Name or ticker, like Apple or AAPL"
           />
-        </label>
-        <button type="submit" disabled={busy}>
-          Search
-        </button>
-      </form>
+        </div>
+      </div>
 
-      {error && <p className="error">{error}</p>}
+      {loaded && !q && items.length === 0 && (
+        <div className="suggestions">
+          <span className="muted small">Popular:</span>
+          {POPULAR.map((name) => (
+            <button key={name} type="button" className="term-chip" onClick={() => setQuery(name)}>
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {results.length > 0 && (
-        <section className="card">
-          <h2>Search results</h2>
-          <ul className="list">
-            {results.map((company) => (
-              <li key={company.id}>
-                <div>
-                  <strong>{company.ticker}</strong> — {company.name}
-                  {company.exchange ? ` (${company.exchange})` : ''}
-                </div>
-                <button type="button" disabled={busy} onClick={() => void onAdd(company)}>
-                  Add
-                </button>
-              </li>
+      {error && (
+        <p className="notice notice--error" role="alert">
+          {error}
+        </p>
+      )}
+
+      {q && (
+        <section className="stack-sm">
+          <h2 className="eyebrow">Add companies</h2>
+          {searchedFor === q &&
+            suggestions.map((company) => (
+              <CompanyRow
+                key={company.id}
+                company={company}
+                following={false}
+                detail={company.exchange ?? 'Stock'}
+                action={
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    aria-label={`Follow ${company.name}`}
+                    disabled={busy}
+                    onClick={() => void onFollow(company)}
+                  >
+                    Follow
+                  </button>
+                }
+              />
             ))}
-          </ul>
+          {searchedFor !== q && <p className="muted">Searching…</p>}
+          {searchedFor === q && suggestions.length === 0 && (
+            <p className="muted">No other companies match that search.</p>
+          )}
         </section>
       )}
 
-      <section>
-        <h2>Your companies</h2>
-        {items.length === 0 ? (
-          <div className="card">
-            <p className="muted">No companies yet. Search above to add your first one.</p>
-          </div>
-        ) : (
-          <div className="ticker-grid">
-            {items.map((item) => (
-              <article key={item.id} className="ticker-card">
+      <section className="stack-sm">
+        <h2 className="eyebrow">Following ({items.length})</h2>
+        {following.map((item) => (
+          <CompanyRow
+            key={item.id}
+            company={item.company}
+            following
+            detail={updatesLabel(item.today_item_count)}
+            action={
+              <div className="row-actions">
                 <Link
-                  className="ticker-card-link"
+                  className="btn btn--ghost"
                   to={`/companies/${item.company.ticker}`}
+                  aria-label={`View ${item.company.name}`}
                 >
-                  <p className="eyebrow">{item.company.exchange ?? 'Equity'}</p>
-                  <h3 className="ticker-symbol">{item.company.ticker}</h3>
-                  <p className="ticker-name">{item.company.name}</p>
-                  <p className="ticker-meta">
-                    {item.today_item_count > 0
-                      ? `${item.today_item_count} update${item.today_item_count === 1 ? '' : 's'} today`
-                      : 'Waiting on daily refresh'}
-                  </p>
+                  View
                 </Link>
                 <button
                   type="button"
-                  className="ghost ticker-remove"
+                  className="btn btn--outline"
+                  aria-label={`Stop following ${item.company.name}`}
                   disabled={busy}
                   onClick={() => void onRemove(item.id)}
                 >
                   Remove
                 </button>
-              </article>
-            ))}
-          </div>
+              </div>
+            }
+          />
+        ))}
+        {loaded && following.length === 0 && (
+          <p className="muted">
+            {items.length === 0
+              ? "You're not following any companies yet. Search above to add your first one."
+              : 'None of the companies you follow match that search.'}
+          </p>
         )}
       </section>
     </main>

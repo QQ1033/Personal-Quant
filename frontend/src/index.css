@@ -1,27 +1,70 @@
 :root {
-  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color: #1c241c;
-  background:
-    radial-gradient(circle at top left, #e8efe6 0%, transparent 40%),
-    linear-gradient(180deg, #f4f1ea 0%, #ebe6db 100%);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --ink: #14171f;
+  --muted: #5a6170;
+  --border: #e3e6ec;
+  --border-strong: #cdd2db;
+  --divider: #eef0f4;
+  --accent: #3346d3;
+  --accent-hover: #2433a8;
+  --accent-soft: #ebeefc;
+  --accent-dashed: #a9b2f2;
+  --focus: #9aa6f0;
+  --macro: #8a4200;
+  --macro-soft: #fdf1e4;
+  --up: #137333;
+  --up-line: #188038;
+  --up-soft: #e6f4ea;
+  --down: #a50e0e;
+  --down-line: #d93025;
+  --down-soft: #fce8e6;
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-body: Inter, system-ui, sans-serif;
+
+  font-family: var(--font-body);
+  color: var(--ink);
+  background: var(--bg);
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  min-width: 320px;
   min-height: 100vh;
+  background: var(--bg);
 }
 
-#root {
-  min-height: 100vh;
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+a:hover {
+  color: var(--accent-hover);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }

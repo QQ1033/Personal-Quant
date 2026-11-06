@@ -1,82 +1,115 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import { getTodayBriefing, type Briefing } from '../lib/api'
+import StoryCard from '../components/StoryCard'
+import {
+  generateBriefing,
+  getTodayBriefing,
+  listWatchlist,
+  type Briefing,
+  type WatchlistItem,
+} from '../lib/api'
 
 export function BriefingPage() {
   const { accessToken } = useAuth()
   const [briefing, setBriefing] = useState<Briefing | null>(null)
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [building, setBuilding] = useState(false)
 
   useEffect(() => {
     if (!accessToken) return
-    void getTodayBriefing(accessToken)
-      .then(setBriefing)
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : 'Failed to load briefing'),
-      )
+    void Promise.all([getTodayBriefing(accessToken), listWatchlist(accessToken)])
+      .then(([todayBriefing, items]) => {
+        setBriefing(todayBriefing)
+        setWatchlist(items)
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load briefing'))
   }, [accessToken])
 
+  async function onBuild() {
+    if (!accessToken) return
+    setBuilding(true)
+    setError(null)
+    try {
+      setBriefing(await generateBriefing(accessToken))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not build your briefing')
+    } finally {
+      setBuilding(false)
+    }
+  }
+
+  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+  const items = briefing?.items ?? []
+  const companyStoryCount = items.filter((item) => item.ticker).length
+  const nameFor = (ticker: string | null) =>
+    watchlist.find((entry) => entry.company.ticker === ticker)?.company.name
+  const quietCompanies = watchlist
+    .filter((entry) => !items.some((item) => item.ticker === entry.company.ticker))
+    .map((entry) => entry.company.name)
+
   return (
-    <main className="page wide">
-      <header className="header">
-        <div>
-          <h1>All updates</h1>
-          <p className="muted">
-            Combined daily digest across your watchlist. Open a ticker card for the full
-            company hub. Not investment advice.
+    <main className="page">
+      <div className="stack-sm">
+        <p className="eyebrow">{today}</p>
+        <h1 className="page-title">Your daily briefing</h1>
+        {items.length > 0 && (
+          <p className="muted lead">
+            {companyStoryCount === 1 ? '1 update' : `${companyStoryCount} updates`} for your watchlist.
           </p>
-        </div>
-      </header>
+        )}
+      </div>
 
-      {error && <p className="error">{error}</p>}
-      {briefing?.note && <p className="info">{briefing.note}</p>}
+      {error && (
+        <p className="notice notice--error" role="alert">
+          {error}
+        </p>
+      )}
 
-      {!briefing || briefing.items.length === 0 ? (
-        <section className="card">
-          <p className="muted">
-            No digest items yet. Add watchlist companies — the daily job fills this
-            automatically.
-          </p>
-          <p>
-            <Link to="/watchlist">Go to watchlist</Link>
-          </p>
-        </section>
-      ) : (
-        <div className="stack">
-          {briefing.items.map((item) => (
-            <article key={item.id} className="card briefing-card">
-              <p className="eyebrow">
-                {item.ticker ? (
-                  <Link to={`/companies/${item.ticker}`}>{item.ticker}</Link>
-                ) : (
-                  'Market'
-                )}{' '}
-                · {item.category}
-              </p>
-              <h2>{item.headline}</h2>
-              <section>
-                <h3>What happened</h3>
-                <p>{item.what_happened}</p>
-              </section>
-              <section>
-                <h3>Why it may matter</h3>
-                <p>{item.why_it_matters}</p>
-              </section>
-              {item.source_urls.length > 0 && (
-                <p>
-                  Sources:{' '}
-                  {item.source_urls.map((url) => (
-                    <a key={url} href={url} target="_blank" rel="noreferrer">
-                      {url}
-                    </a>
-                  ))}
-                </p>
-              )}
-            </article>
-          ))}
+      {!briefing && !error && (
+        <div className="stack-sm" role="status" aria-label="Loading your briefing">
+          <div className="skeleton" />
+          <div className="skeleton" />
         </div>
       )}
+
+      {items.map((item, index) => (
+        <StoryCard key={item.id} item={item} companyName={nameFor(item.ticker)} defaultExpanded={index === 0} />
+      ))}
+
+      {briefing && items.length > 0 && quietCompanies.length > 0 && (
+        <div className="quiet stack-sm">
+          <p>No stories in today's briefing yet for {quietCompanies.join(', ')}.</p>
+          <button type="button" className="btn btn--outline quiet-action" disabled={building} onClick={() => void onBuild()}>
+            {building ? 'Updating…' : 'Update my briefing'}
+          </button>
+        </div>
+      )}
+
+      {briefing && items.length === 0 && watchlist.length > 0 && (
+        <div className="card empty">
+          <h2 className="card-title">Today's briefing isn't ready yet</h2>
+          <p className="muted">Briefings refresh every day. You can also build today's now, which can take up to a minute.</p>
+          <button type="button" className="btn btn--primary" disabled={building} onClick={() => void onBuild()}>
+            {building ? 'Building…' : "Build today's briefing"}
+          </button>
+        </div>
+      )}
+
+      {briefing && watchlist.length === 0 && (
+        <div className="card empty">
+          <h2 className="card-title">Your watchlist is empty</h2>
+          <p className="muted">Follow a few companies and their news shows up here each morning.</p>
+          <Link className="btn btn--primary" to="/watchlist">
+            Find companies
+          </Link>
+        </div>
+      )}
+
+      <p className="small muted">
+        Investory explains news for learning. It doesn't predict prices or give buy, sell or hold advice.
+      </p>
     </main>
   )
 }
